@@ -50,6 +50,7 @@ as early in your code as possible.
 #define FLASH_FREQ_HZ 8
 
 enum FLASHRATE {
+	ON = -1,
 	OFF = 0,
 	SLOW = 1,
 	MEDIUM = 2,
@@ -139,12 +140,6 @@ private:
 		interrupts();
 	}
 
-	// Change the flash rate of an LED managed by this routine
-	// This is called internally after setFlashRate looks up the global instance
-	inline void setObjFlashRate(const size_t LED, const FLASHRATE rate) {
-		_LED_add[LED] = rate;
-	}
-
 	// Do the loop. 
 	// This gets called from the interrupt and toggles the appropriate pins
 	void doLoop() override {
@@ -160,6 +155,22 @@ private:
 				digitalWrite(_LED_Pins[i], digitalRead(_LED_Pins[i]) ^ 1);
 			}
 		}
+	}
+
+	static int checkValidity(const int LED) {
+	  // Confirm that a) there is a static instance
+	  if (!_instance)
+	    return -1;
+
+	  // b) it's of the same template type as this method call (i.e. same num pins)
+	  if (_instance->numDerivedPins() != numPins)
+	    return -2;
+
+	  // and c) the user has requested a valid pin
+	  if (LED >= numPins)
+	    return -3;
+
+	  return 0;
 	}
 
 public:
@@ -183,25 +194,45 @@ public:
 	// Change the flash rate of an LED managed by this routine
 	// N.B. The LED number corresponds to ordering in the array passed to init()
 	static int setFlashRate(const size_t LED, const FLASHRATE rate) {
-		// Confirm that a) there is a static instance
-		if (!_instance)
-			return -1;
 
-		// b) it's of the same template type as this method call (i.e. same num pins)
-		if (_instance->numDerivedPins() != numPins)
-			return -2;
+	  // Check that this call is valid
+	  int e = checkValidity(LED);
+	  if (e)
+	    return e;
 
-		// and c) the user has requested a valid pin
-		if (LED >= numPins)
-			return -3;
+	  // Cast to the derived type
+	  pinToggler * ref = (pinToggler*)_instance;
 
-		// Cast to the derived type
-		pinToggler * ref = (pinToggler*)_instance;
+	  // If the user has asked for a value < 0, change it to zero
+	  uint8_t newRate = (rate < 0 ? 0 : rate);
 
-		// Change the rate
-		ref->_LED_add[LED] = rate;
+	  // Change the rate
+	  ref->_LED_add[LED] = newRate;
 
-		return 0;
+	  // If we disabled the LED, turn it off or on depending on user choice
+	  if (rate <= 0) {
+	    if (rate == OFF)
+	      digitalWrite(ref->_LED_Pins[LED], LOW);
+	    else // rate == ON
+	      digitalWrite(ref->_LED_Pins[LED], HIGH);
+	  }
+
+	  return 0;
+	}
+
+	// Return the pin corresponding to a given LED
+	static int getPin(const size_t LED) {
+	  
+	  // Check that this call is valid
+	  int e = checkValidity(LED);
+	  if (e)
+	    return e;
+	
+	  // Cast to the derived type
+	  pinToggler * ref = (pinToggler*)_instance;
+
+	  // Return the pin number
+	  return ref->_LED_Pins[LED];
 	}
 
 };

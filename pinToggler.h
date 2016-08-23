@@ -1,82 +1,48 @@
-/** 
-@class pinToggler pinToggler.h
-Manages the toggling of pins at variable rates. 
+/** @file
+ * Contains all the code for the arduino-pin-toggler library
+ */
 
-@copyright Charles Baynham 2016
+/** @brief      The prescaler for TIMER1
+ *
+ *             This value is used to calculate the correct value to start TIMER1
+ *             on, given this prescaler factor.
+ *
+ *             This does not need to be changed unless you need particularly
+ *             fast flash rates.
+ *
+ *             Specifically, if your application requires `16000000 / PRESCALER
+ *             / FLASH_FREQ_HZ >= 65536` you will need to alter the prescaler
+ *             value both here and where it is set in the private
+ *             setupSingleton() method.
+ */
+#define PRESCALER 1024
 
-This Arduino library manages the toggling of arbitary pins at controllable rates.
-For example, it can be used to flash an LED at different speeds according
-to the state of your device.
-
-It works using interrupts and is designed to be lightweight when running,
-so will not interfere with existing code.
-
-This library requires exclusive usage of TIMER1 so is incompatible with
-libraries that also use this timer.
-
-Usage
------
-
-Include the class by adding `#include <pinToggler.h>` to your sketch.
-
-Init the class by passing it an array of pins that will be toggled. E.g.
-
-	int pins[3] = {13, A4, A5};
-	pinToggler<3>::init(pins);
-
-The template parameter (`<3>` above) defines the total number of pins being controlled.
-
-These pins will start `LOW`, not toggling.
-
-To start the toggling, set their speed to `OFF`, `SLOW`, `MEDIUM`, `FAST` or `MAX`. E.g.
-
-	pinToggler<3>::setFlashRate(0, SLOW);
-
-N.B. The template parameter (here `<3>`) must match the one used in pinToggler::init() or this will
-throw an error. Also the LED parameter in pinToggler::setFlashRate refers to the pins passed to pinToggler::init(), zero-indexed
-in the order that they appeared in in the array.
-
-The speeds refer to fractions of the max speed, defined by #FLASH_FREQ_HZ.
-
-Note that all the function calls here are static members of the class. Although a class object
-is created, this happens internally. For memory management purposes, be aware that this class
-allocates `3 * numPins` bytes on the heap. Thus, to avoid memory framentation, pinToggler::init() should be called
-as early in your code as possible.
-*/
-
-/*! @mainpage arduino-pin-toggler
-	@copyright Charles Baynham 2016
-
-	This Arduino library manages the toggling of arbitary pins at controllable rates.
-	For example, it can be used to flash an LED at different speeds according
-	to the state of your device.
-
-	See the documentation for the class #pinToggler for more details. 
-	*/
-
-
-#define PRESCALER 1024 // If this is changed, you must also update this value in the init() method
-
-/** How often the ISR will trigger, defining the max toggle rate. 
-	In combination with the #FLASHRATE chosen with pinToggler#setFlashRate, this 
-	determines the rate at which the pins will toggle. 
-*/
+/** @brief      How often the ISR will trigger.
+ *
+ *             This defines the max toggle rate. In combination with the
+ *             #FLASHRATE chosen with pinToggler#setFlashRate, this determines
+ *             the rate at which the pins will toggle.
+ */
 #define FLASH_FREQ_HZ 8
 
 /**
-Flash rate options. These rates are used as parameters to the setFlashRate method. 
-
-Choosing MAX will flash at FLASH_FREQ_HZ, SLOW will flash at FLASH_FREQ_HZ / 8. 
-
-OFF and ON allow you to disable flashing, leaving the LED either on or off. 
-*/
+ * @brief      Flash rate options.
+ *
+ *             These rates are used as parameters to the setFlashRate method.
+ *
+ *             In combination with FLASH_FREQ_HZ, these set the flash rate of an
+ *             LED.
+ *
+ *             OFF and ON allow you to disable flashing, leaving the LED either
+ *             on or off.
+ */
 enum FLASHRATE {
-	ON = -1,
-	OFF = 0,
-	SLOW = 1,
-	MEDIUM = 2,
-	FAST = 4,
-	MAX = 8
+	ON = -1,		/*!< Always on */
+	OFF = 0,		/*!< Always off */
+	SLOW = 1,		/*!< Flash at FLASH_FREQ_HZ / 8 */
+	MEDIUM = 2,		/*!< Flash at FLASH_FREQ_HZ / 2 */
+	FAST = 4,		/*!< Flash at FLASH_FREQ_HZ / 4 */
+	MAX = 8			/*!< Flash at FLASH_FREQ_HZ */
 };
 
 // Declare the TIMER1 ISR routine
@@ -105,6 +71,24 @@ public:
 
 };
 
+/**
+ * @brief      Class for toggling pins.
+ *
+ *             This class maintains a list of pins that it controls as outputs.
+ *             It initiates TIMER1 and uses this to trigger an interrupt
+ *             routine, allowing arbitary numbers of pins to be toggled at
+ *             selectable rates.
+ *
+ *             This class implements a singleton and all access to it is via
+ *             static methods. The first usage of init() will define the value
+ *             of numPins. Attempts to use init() with another value of numPins
+ *             after this will fail with an error code.
+ *
+ *             For example usage see the Arduino sketches located in the
+ *             `examples` directory.
+ *
+ * @tparam     numPins  The number of pins that this object will handle.
+ */
 template <int numPins>
 class pinToggler : public pinTogglerBase {
 
@@ -149,6 +133,7 @@ private:
 		TCNT1 = timer1_counter;
 
 		// Set the prescaler to 1024
+		// Alter the code here if you change the value of PRESCALER
 		TCCR1B |= (1 << CS12);
 		TCCR1B |= (1 << CS10);
 
@@ -159,9 +144,11 @@ private:
 		interrupts();
 	}
 
-	/** Do the loop.
-		This method is called by the ISR and controls the toggling of the controlled pins.
-		It should not be called manually. 
+	/**
+	 @brief      Do the loop.
+	
+	             This method is called by the ISR and controls the toggling of
+	             the controlled pins. It should not be called manually.
 	*/
 	void doLoop() override {
 
@@ -196,18 +183,22 @@ private:
 
 public:
 
-	/** Initiate the pins and TIMER1
-
-	Setup and start the ISR triggered by TIMER1, and set TIMER1 running.
-	Also, set all input pins as outputs and set their output to LOW. 
-
-	@param LED_Pins Pointer to a <numPins> dimention array of pins to be controlled. 
-	The values in this array will be copied so it can be deleted from memory after this
-	function call is complete. 
-
-	@retval 0 No error
-	@retval -1 init() has been called already
-
+	/**
+	@brief      Initiate the pins and TIMER1
+	
+	            Setup and start the ISR triggered by TIMER1, and set TIMER1
+	            running. Also, set all input pins as outputs and set their
+	            output to LOW.
+	
+	@param[in]  LED_Pins  Pointer to a <numPins> dimention array of pins to be
+	                      controlled. The values in this array will be copied so
+	                      it can be deleted from memory after this function call
+	                      is complete.
+	
+	@retval     0         No error
+	@retval     -1        init() has been called already
+	
+	@return     Error code
 	*/
 	static int init(const uint8_t * LED_Pins) {
 
@@ -225,18 +216,25 @@ public:
 	}
 
 	/** Change the flash rate of an LED managed by this routine.
-		
-		@param LED The zero reference LED to set the flash rate of. The LED number should
-		correspond to the index of this pin in the array passed to init().
-
-		@param rate The rate at which to flash this LED. Options are enumerated in #FLASHRATE.
-
-		@retval 0 No error
-		@retval -1 init() has not been called.
-		@retval -2 init() was called with a different value of numPins
-		@retval -3 The given pin does not exist
-		
-	*/
+	 *
+	 * This method sets the flash rate of one of the pins controlled by the
+	 * pinToggler class. Pins are placed under control by passing them to
+	 * init(), after which they are refered to by their zero-indexed position in
+	 * the array passed to init().
+	 *
+	 * @param      LED   The zero reference LED to set the flash rate of. The
+	 *                   LED number should correspond to the index of this pin
+	 *                   in the array passed to init().
+	 * @param      rate  The rate at which to flash this LED. Options are
+	 *                   enumerated in #FLASHRATE.
+	 *
+	 * @retval     0     No error
+	 * @retval     -1    init() has not been called.
+	 * @retval     -2    init() was called with a different value of numPins
+	 * @retval     -3    The given pin does not exist
+	 *
+	 * @return     Error code
+	 */
 	static int setFlashRate(const size_t LED, const FLASHRATE rate) {
 
 	  // Check that this call is valid
@@ -264,13 +262,15 @@ public:
 	  return 0;
 	}
 
-	/** Return the pin corresponding to a given LED
-
-	@param LED The zero reference LED to get the pin of. The LED number should
-	correspond to the index of this pin in the array passed to init().
-
-	@retval int Pin number. N.B. If an error occurs the return value will be negative, 
-	according to the error codes in #setFlashRate.
+	/**
+	@brief      Return the pin corresponding to a given LED
+	
+	@param      LED   The zero reference LED to get the pin of. The LED number
+	                  should correspond to the index of this pin in the array
+	                  passed to init().
+	
+	@return     Pin number. N.B. If an error occurs the return value will be
+	            negative, according to the error codes in #setFlashRate.
 	*/
 	static int getPin(const size_t LED) {
 	  

@@ -17,6 +17,9 @@
  */
 #define PRESCALER 1024
 
+#define CONSOLE_LOG(...)
+#define CONSOLE_LOG_LN(...)
+
 /** @brief      How often the ISR will trigger.
  *
  *             This defines the max toggle rate. In combination with the
@@ -54,7 +57,7 @@ class pinTogglerBase {
 	static pinTogglerBase * _instance;
 
 	// Define a value for timer1_counter such that our ISR is called at the right rate
-	static const int timer1_counter = 65536 - 16000000 / PRESCALER / FLASH_FREQ_HZ;   // preload timer 65536-16MHz/256/2Hz
+	static const int timer1_counter = 65536 - 16000000 / PRESCALER / FLASH_FREQ_HZ;
 
 	// Allow the ISR to access this
 	friend void TIMER1_OVF_vect();
@@ -115,6 +118,12 @@ private:
 		// Store the pin numbers and set as outputs, low
 		for (size_t i = 0; i < numPins; i++) {
 
+			CONSOLE_LOG(F("setupSingleton::storing pin "));
+			CONSOLE_LOG(LED_Pins[i]);
+			CONSOLE_LOG(F(" in _LED_Pins["));
+			CONSOLE_LOG(i);
+			CONSOLE_LOG_LN(']');
+
 			_LED_Pins[i] = LED_Pins[i];
 
 			pinMode(LED_Pins[i], OUTPUT);
@@ -122,6 +131,8 @@ private:
 		}
 
 		// Setup the timer
+
+		CONSOLE_LOG_LN(F("Disabling interrupts"));
 
 		// Wipe any existing config for TIMER1
 		noInterrupts();
@@ -142,15 +153,21 @@ private:
 
 		// Reenable global interrupts
 		interrupts();
+
+		CONSOLE_LOG_LN(F("Timer setup and interrupts reenabled"));
 	}
 
 	/**
 	 @brief      Do the loop.
 	
 	             This method is called by the ISR and controls the toggling of
-	             the controlled pins. It should not be called manually.
+	             the controlled pins. It should not be called manually (hence private). 
 	*/
 	void doLoop() override {
+		
+		CONSOLE_LOG(F("pinToggler<"));
+		CONSOLE_LOG(numManagedPins());
+		CONSOLE_LOG_LN(F(">::doLoop"));
 
 		// Loop over LEDs
 		for (int i = 0; i < numPins; i++) {
@@ -197,22 +214,41 @@ public:
 	
 	@retval     0         No error
 	@retval     -1        init() has been called already
+	@retval     -2        Stack assignment failed: out of memory
 	
 	@return     Error code
 	*/
 	static int init(const uint8_t * LED_Pins) {
 
+		CONSOLE_LOG_LN(F("pinToggler::init started"));
+
 		if (NULL != _instance)
 			return -1;
+
+		CONSOLE_LOG_LN(F("pinToggler::no pre-existing static instance"));
 
 		// Create the new object
 		pinToggler * singletonInstance = new pinToggler;
 
+		CONSOLE_LOG(F("pinToggler::instance defined at 0x"));
+		CONSOLE_LOG_LN((unsigned int)singletonInstance, HEX);
+
+		if (0 == singletonInstance) {
+			CONSOLE_LOG_LN(F("pinToggler::Error, no space for assignment"));
+			return -2;
+		}
+
 		// Setup its pins
 		singletonInstance->setupSingleton(LED_Pins);
 
+		CONSOLE_LOG_LN(F("pinToggler::pins setup"));
+
 		// Store it in the base class
 		_instance = singletonInstance;
+
+		CONSOLE_LOG_LN(F("pinToggler::setup complete"));
+
+		return 0;
 	}
 
 	/** Change the flash rate of an LED managed by this routine.
@@ -289,7 +325,7 @@ public:
 };
 
 // Define the static instance
-pinTogglerBase * pinTogglerBase::_instance = NULL;
+pinTogglerBase * pinTogglerBase::_instance = 0;
 
 // Interrupt service routine
 // This is called by TIMER1 at a rate of FLASH_FREQ_HZ
@@ -299,6 +335,8 @@ ISR(TIMER1_OVF_vect)
 	TCNT1 = pinTogglerBase::timer1_counter;
 
 	// Call the derived loop function
-	pinTogglerBase::instance()->doLoop();
+	pinTogglerBase * inst = pinTogglerBase::instance();
+	if (inst) inst->doLoop();
+
 }
 

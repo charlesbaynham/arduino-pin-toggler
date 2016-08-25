@@ -2,7 +2,8 @@
 arduino-pin-toggler
 ===================
 
-@section Introduction
+Introduction						{#sec-Introduction}
+=============
 
 This Arduino library manages the toggling of arbitary pins at controllable rates.
 For example, it can be used to flash an LED at different speeds according
@@ -14,7 +15,8 @@ so will not interfere with existing code.
 This library requires exclusive usage of TIMER1 so is incompatible with
 libraries that also use this timer.
 
-@section Usage
+Usage						{#sec-Usage}
+=============
 
 Include the class by adding `#include <pinToggler.h>` to your sketch.
 
